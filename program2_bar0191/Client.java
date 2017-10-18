@@ -49,7 +49,7 @@ public class Client {
 
 	    // display client connection success, prompt for response
 	    System.out.println("Connection established on -> " + address);
-	    System.out.println("Enter URL (Enter 'Exit' to close connection):");
+	    System.out.print("Enter URL (Enter 'exit' to close): ");
 
 	    // initialize response
 	    String response = null;
@@ -63,6 +63,7 @@ public class Client {
 	            output.flush();
 	            response = input.readLine();
 	            System.out.println("Server Response -> " + response);
+	            System.out.print("Enter URL (Enter 'exit' to close): ");
 	            buffer = reader.readLine();
 	        }
 	    } catch(IOException e) {

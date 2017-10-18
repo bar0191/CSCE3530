@@ -10,14 +10,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import javax.net.ssl.HttpsURLConnection;
 import java.lang.StringBuilder;
-import java.net.MalformedURLException;
 
 // main server class
 public class Server {
@@ -76,55 +69,56 @@ class ServerThread extends Thread {
     BufferedReader input  = null;
     PrintWriter    output = null;
     Socket         sock   = null;
+    String         response = null;
 
     // constructor
     public ServerThread(Socket sock) {
         this.sock = sock;
     }
 
-    // Helper method.
-    // Read a stream to the end into a string.
-    // referenced from: https://stackoverflow.com/questions/45415145/https-get-http-1-1-request-through-java-socket
-    public String convertResponseToString(InputStream input) throws IOException {
-    	String pageContent = null;
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[1024];
-        int bytesRead;
-
-        while ((bytesRead = input.read(buffer)) > 0) {
-            output.write(buffer, 0, bytesRead);
-        }
-
-        pageContent = output.toString(StandardCharsets.UTF_8.name());
-
-        return pageContent;
-    }
-
     
-    // Socket-based HTTP GET Request
-    // referenced from: https://stackoverflow.com/questions/45415145/https-get-http-1-1-request-through-java-socket
-    public void getRequest(String url) throws IOException {
+    public String getHTTPRequest(String url) throws IOException {
         int PORT = 80;
+        String errorStatus = "ERROR: 400 Bad Request";
+        StringBuilder response = new StringBuilder();
+        boolean isContent = false;
+        String line = null;
+        String statusCode = null;
+        PrintWriter output = null;
+        BufferedReader input = null;
+        String request = "GET / HTTP/1.1\r\nConnection: close\r\nHost:"+url+"\r\n\r\n";
 
         try (Socket sock = new Socket(url, PORT)) {
-            String request = "GET / HTTP/1.1\r\nConnection: close\r\nHost:"+url+"\r\n\r\n";
+            output = new PrintWriter(sock.getOutputStream());
+            input = new BufferedReader(new InputStreamReader(sock.getInputStream()));
 
-            OutputStream output = sock.getOutputStream();
-            output.write(request.getBytes(StandardCharsets.US_ASCII));
+            output.write(request);
+            output.flush();
 
-            InputStream input = sock.getInputStream();
-            String response = convertResponseToString(input);
+            line = input.readLine();
+            statusCode = line; 
 
-            System.out.println(response);
+            if (line.startsWith("HTTP/1.1 200 OK")) {
+                while((line = input.readLine()) != null) {
+                    if (!isContent) {
+                        if (line.toLowerCase().startsWith("<!doctype html") || (line.toLowerCase().startsWith("<html"))) {
+                            isContent = true;
+                        } else {
+                            continue;
+                        }
+                    }
+                    response.append(line + " ");    
+                }
+            } else {
+                response.append(statusCode + " ");
+                while((line = input.readLine()) != null) {
+                    response.append(line + " ");
+                }
+            }
+            return response.toString(); 
+        } catch(IOException e) {
+            return errorStatus;
         }
-    }
-
-    public void validateURL(String buffer) {
-    	try {
-    		URL url = new URL("http://" + buffer);
-    	} catch (MalformedURLException e) {
-    		System.out.println("ERROR: validating URL");
-    	}
     }
 
     // Thread run()
@@ -147,11 +141,10 @@ class ServerThread extends Thread {
             // while message is not bye, read and write to socket stream
             while(buffer.toLowerCase().compareTo("exit") != 0){
                 System.out.println("Response from Client  ->  " + buffer);
-                output.println(buffer);
+                response = getHTTPRequest(buffer);
+                output.println(response);
                 output.flush(); // flush buffer from extra characters
-                //validateURL(buffer);
-                getRequest(buffer);
-                System.out.println("Response to Client    ->  " + buffer);
+                System.out.println("Response to Client    ->  " + response);
                 buffer = input.readLine();
             }   
         } catch (IOException e) {
