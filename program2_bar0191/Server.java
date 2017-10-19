@@ -7,10 +7,15 @@
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.FileReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.lang.StringBuilder;
+import java.util.Scanner;
+import java.util.ArrayList;
 
 // main server class
 public class Server {
@@ -27,6 +32,16 @@ public class Server {
         if (Integer.parseInt(args[0]) < 1024 || Integer.parseInt(args[0]) > 49151) {
             System.out.println("ERROR: Invalid port: 1024 - 49151");
             System.exit(0);
+        }
+
+        // initialize file for list of sites cached
+        File list = new File("list.txt");
+        if (!list.exists()) {
+            try {
+                list.createNewFile();
+            } catch(IOException e) {
+                System.out.println("ERROR: could not create list.txt file");
+            }
         }
 
         // initialize socket and server socket
@@ -65,28 +80,29 @@ public class Server {
 class ServerThread extends Thread {  
 
     // initialize buffer, socket, and IO streams
-    String         buffer = null;
-    BufferedReader input  = null;
-    PrintWriter    output = null;
-    Socket         sock   = null;
+    String         buffer   = null;
+    BufferedReader input    = null;
+    PrintWriter    output   = null;
+    Socket         sock     = null;
     String         response = null;
 
     // constructor
     public ServerThread(Socket sock) {
         this.sock = sock;
     }
-
     
     public String getHTTPRequest(String url) throws IOException {
-        int PORT = 80;
-        String errorStatus = "ERROR: 400 Bad Request";
+        int PORT               = 80;
+        String errorStatus     = "ERROR: 400 Bad Request";
         StringBuilder response = new StringBuilder();
-        boolean isContent = false;
-        String line = null;
-        String statusCode = null;
-        PrintWriter output = null;
-        BufferedReader input = null;
-        String request = "GET / HTTP/1.1\r\nConnection: close\r\nHost:"+url+"\r\n\r\n";
+        boolean isContent      = false;
+        String line            = null;
+        String statusCode      = null;
+        PrintWriter output     = null;
+        BufferedReader input   = null;
+        String request         = "GET / HTTP/1.1\r\nConnection: close\r\nHost:"+url+"\r\n\r\n";
+        FileWriter fileOutput  = null;
+        boolean needsCached    = false;
 
         try (Socket sock = new Socket(url, PORT)) {
             output = new PrintWriter(sock.getOutputStream());
@@ -99,6 +115,32 @@ class ServerThread extends Thread {
             statusCode = line; 
 
             if (line.startsWith("HTTP/1.1 200 OK")) {
+
+                Scanner fileScan = new Scanner(new File("list.txt"));
+                ArrayList<String> list = new ArrayList<String>();
+                while (fileScan.hasNextLine()) {
+                    list.add(fileScan.nextLine());
+                }
+                if (!list.contains(url)) {
+                    list.add(0, url);
+                    needsCached = true;
+                }
+                
+                if (list.size() > 5) {
+                    File deleteFile = new File(list.get(list.size() - 1));
+                    if(deleteFile.delete()) {
+                        System.out.println("File deleted successfully");
+                    } else {
+                        System.out.println("Failed to delete the file");
+                    }
+                    list.remove(list.size() - 1);
+                }
+                fileOutput = new FileWriter("list.txt");
+                for (String str: list) {
+                    fileOutput.write(str + "\n");
+                }
+                fileOutput.close();
+                System.out.println(list);
                 while((line = input.readLine()) != null) {
                     if (!isContent) {
                         if (line.toLowerCase().startsWith("<!doctype html") || (line.toLowerCase().startsWith("<html"))) {
@@ -108,6 +150,12 @@ class ServerThread extends Thread {
                         }
                     }
                     response.append(line + " ");    
+                }
+                if (needsCached) {
+                    fileOutput = new FileWriter(url);
+                    fileOutput.write(response.toString());
+                    fileOutput.close();
+                    needsCached = false;
                 }
             } else {
                 response.append(statusCode + " ");
